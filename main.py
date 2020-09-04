@@ -17,7 +17,7 @@ header.place(x=300,y=1)
 #header.pack()
 
 #left frame
-left_frame = tk.Frame(window, width=400, height=400, highlightbackground="black", highlightthickness=1)
+left_frame = tk.Frame(window, width=400, height=500, highlightbackground="black", highlightthickness=1)
 left_frame.place(x=40,y=150)
 left_frame.pack_propagate(0)
 
@@ -32,7 +32,7 @@ left_label.place(x=200,y=120)
 
 
 #rigt_frame
-rigt_frame = tk.Frame(window, width=400, height=400, highlightbackground="black", highlightthickness=1)
+rigt_frame = tk.Frame(window, width=400, height=500, highlightbackground="black", highlightthickness=1)
 rigt_frame.place(x=760,y=150)
 rigt_frame.pack_propagate(0)
 
@@ -100,102 +100,75 @@ def open_file():
 
 def resize_img(img):
     
-    img1 = cv2.resize(img,(400,400)) #(a high-quality downsampling filter)       
+    img1 = cv2.resize(img,(400,500)) #(a high-quality downsampling filter)       
     return img1
 
 def Enhance():
     img_rgb = variables.img
-    # img_oil = cv2.xp
-    # hoto.oilPainting(img_rgb, 3, 1)
-    numDownSamples = 2 # number of downscaling steps
-    numBilateralFilters = 4 # number of bilateral filtering steps
+    #gray conversion
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2GRAY)
 
-    # -- STEP 1 --
-    # downsample image using Gaussian pyramid
-    img_color = img_rgb
-    for _ in range(numDownSamples):
-        img_color = cv2.pyrDown(img_color)
+    #blurrring to remove noise
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # repeatedly apply small bilateral filter instead of applying
-    # one large filter
+    #Laplacian filter
     
-    for _ in range(numBilateralFilters):
-        img_color = cv2.bilateralFilter(img_color, 7, 15, 20) 
-        #cv2.bilateralFilter(src, d, sigmaColor, sigmaSpace[, dst[, borderType]]) 
+    ddepth = cv2.CV_64F
+    kernel_size = 3
+    laplacian = cv2.Laplacian(blur, ddepth, ksize=kernel_size)
 
-    # upsample image to original size
-    
-    for _ in range(numDownSamples):
-        img_color = cv2.pyrUp(img_color)
+    # converting back to uint8
+    dst = cv2.convertScaleAbs(laplacian)
 
-    
-    # img_gray = cv2.GaussianBlur(img_color, (21, 21), 0)
-    # img_weight = cv2.addWeighted(img_gray, 1.5, img_gray, -0.9, 0)
-    
-    #sharpening the image
-    filter = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
-    img_sharp = cv2.filter2D(img_color,-1,filter)
-    img_sharp = cv2.filter2D(img_sharp,-1,filter)
-    # img_final = cv2.blur(img_sharp,(5,5))
-    img_final = cv2.GaussianBlur(img_sharp, (9, 9), 0)
-    img_final = cv2.filter2D(img_final,-1,filter)
-
-    #sharpening the image
-    # filter = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
-    # img_weight = cv2.filter2D(img_weight,-1,filter)
-    
-    #histogram_equalization
-    
-
-    # img = cv2.equalizeHist(img_weight)
-    b, g, r = cv2.split(img_final)
-    red = cv2.equalizeHist(r)
-    green = cv2.equalizeHist(g)
-    blue = cv2.equalizeHist(b)
-    img = cv2.merge((blue, green, red))
+    #subtraction of image
+    sub = cv2.subtract(gray, dst)
+    # avg1 = cv2.blur(sub, (5, 5))
 
 
-    #brightness decrement
-    value = 30
-    lim = 60
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    h, s, v = cv2.split(hsv)
-    
-    v[v > lim] -= value
-
+    #sobel filter
+    scale = 2
+    delta = 1
+    ddepth = cv2.CV_64F
+    grad_x = cv2.Sobel(sub, ddepth, 1, 0, ksize=3, scale=scale, delta=delta, borderType=cv2.BORDER_DEFAULT)
+    # Gradient-Y
+    # grad_y = cv2.Scharr(gray,ddepth,0,1)
+    grad_y = cv2.Sobel(sub, ddepth, 0, 1, ksize=3, scale=scale, delta=delta, borderType=cv2.BORDER_DEFAULT)
     
     
-
-    final_hsv = cv2.merge((h, s, v))
-    img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
-
-
-    #signature
-    # font 
-    font = cv2.FONT_HERSHEY_SIMPLEX 
-
-    # org 
-    h,w,d = img.shape
+    abs_grad_x = cv2.convertScaleAbs(grad_x)
+    abs_grad_y = cv2.convertScaleAbs(grad_y)
     
-    org = (w-60, h-20) 
     
-    # fontScale 
-    fontScale = 1
+    sobel_img = cv2.addWeighted(abs_grad_x, 0.5, abs_grad_y, 0.5, 0)
 
-    # Blue color in BGR 
-    color = (0, 0, 255) 
+    #smoothing with 5x5 averaging filter
+    avg = cv2.blur(sobel_img, (5, 5))
+    # avg = cv2.GaussianBlur(sobel_img, (3, 3), 0)
 
-    # Line thickness of 1 px 
-    thickness = 2
+    #mask = multiplication of result of subtraction and smoothed image
+    # mask = cv2.multiply(sub, avg)
+    # mask = cv2.bitwise_xor(sub, avg)
+    # mask = cv2.add(sub, avg)
+    # mask = cv2.bitwise_or(sub, avg)
+    mask = cv2.bitwise_and(sub, avg)
 
-    # Using cv2.putText() method 
-    img = cv2.putText(img, 'S.K.', org, font,  
-                   fontScale, color, thickness, cv2.LINE_AA) 
+    #adding mask with first gray image
+    summ = cv2.add(gray, mask)
+    # sub = cv2.subtract(summ, dst)
 
-    
+    # blur = cv2.GaussianBlur(summ, (3, 3), 0)
+
+
+
+
+
+
+
+    color = cv2.cvtColor(summ, cv2.COLOR_GRAY2BGR)
+
 
     #resizing for image display
-    variables.out_img = resize_img(img)
+    variables.out_img = resize_img(color)
     #Rearranging the color channel
     b,g,r = cv2.split(variables.out_img)
     img = cv2.merge((r,g,b))
